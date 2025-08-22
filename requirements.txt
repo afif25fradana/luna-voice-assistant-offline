@@ -1,0 +1,29 @@
+# Luna Voice Assistant - Requirements
+# Install with: pip install -r requirements.txt
+
+# GUI Framework
+customtkinter>=5.2.0
+
+# Image Processing
+Pillow>=10.0.0
+
+# Audio Processing
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Speech Recognition
+faster-whisper>=0.10.0
+webrtcvad-wheels>=2.0.10
+
+# Text-to-Speech
+piper-tts>=1.2.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Code Interpreter (specific version for Python 3.11 compatibility)
+open-interpreter
+
+# Application Packaging
+pyinstaller

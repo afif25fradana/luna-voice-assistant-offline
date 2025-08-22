@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.env
+.env
+
+# Logs
+logs/
+*.log
+
+# Memory
+memory.json
+
+# Temporary files
+temp/
+
+# Models (downloaded, not part of source)
+models/stt/
+models/tts/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE-specific
+.vscode/
+.idea/
+
+# Personal Modelfile
+Modelfile
