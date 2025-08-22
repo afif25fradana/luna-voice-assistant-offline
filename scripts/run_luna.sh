@@ -7,4 +7,4 @@ cd "$(dirname "$0")"
 source venv/bin/activate
 
 # Run the main application
-python main.py
+python src/main.py

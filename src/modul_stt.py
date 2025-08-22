@@ -14,7 +14,7 @@ import sounddevice as sd
 import scipy.io.wavfile as wav
 from faster_whisper import WhisperModel
 
-from config import Config
+from .config import Config
 
 class SpeechListener:
     """

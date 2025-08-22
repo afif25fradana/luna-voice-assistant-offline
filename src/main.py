@@ -8,8 +8,8 @@ from pathlib import Path
 
 import customtkinter as ctk
 
-from config import Config
-from gui import AssistantApp
+from .config import Config
+from .gui import AssistantApp
 
 def setup_logging():
     """Configures logging to file and console."""

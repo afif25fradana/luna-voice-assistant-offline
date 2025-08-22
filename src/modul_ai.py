@@ -17,11 +17,11 @@ from requests.exceptions import RequestException, ConnectionError, Timeout
 # This avoids confusion with the 'openai' library being used for OpenAI's official API.
 from openai import OpenAI as OllamaClient
 
-from config import Config
+from .config import Config
 from interpreter import interpreter
-from modul_helper import run_shortcut
-from modul_memory import ChatMemory
-from personal_shortcuts import PERSONAL_SHORTCUTS
+from .modul_helper import run_shortcut
+from .modul_memory import ChatMemory
+from .personal_shortcuts import PERSONAL_SHORTCUTS
 
 # Initialize chat memory
 chat_memory = ChatMemory(memory_file=str(Config.MEMORY_FILE), max_memory_size=Config.MAX_MEMORY_SIZE)

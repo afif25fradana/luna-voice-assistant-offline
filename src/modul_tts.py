@@ -9,7 +9,7 @@ import numpy as np
 import sounddevice as sd
 from piper import PiperVoice
 
-from config import Config
+from .config import Config
 
 class TTSManager:
     """

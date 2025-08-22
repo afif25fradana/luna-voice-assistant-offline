@@ -10,10 +10,10 @@ import logging
 import customtkinter as ctk
 from PIL import Image, ImageDraw
 
-from config import Config
-from modul_stt import SpeechListener
-from modul_ai import ask_ollama, warm_up_ollama, chat_memory
-from modul_tts import TTSManager, stop_speaking
+from .config import Config
+from .modul_stt import SpeechListener
+from .modul_ai import ask_ollama, warm_up_ollama, chat_memory
+from .modul_tts import TTSManager, stop_speaking
 
 class MessageBubble(ctk.CTkFrame):
     """
@@ -148,7 +148,7 @@ class AssistantApp(ctk.CTk):
             widget.destroy()
         self.message_count = 0
         self.current_assistant_bubble = None
-        from modul_ai import chat_memory
+        from .modul_ai import chat_memory
         chat_memory.clear_memory()
         self._add_welcome_message()
 

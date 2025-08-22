@@ -4,7 +4,7 @@ primarily for executing personal shortcuts.
 """
 import urllib.parse
 import subprocess
-from personal_shortcuts import PERSONAL_SHORTCUTS
+from .personal_shortcuts import PERSONAL_SHORTCUTS
 
 def run_shortcut(command_key: str, **kwargs) -> str:
     """
