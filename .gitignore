@@ -15,6 +15,7 @@ logs/
 
 # Memory
 memory.json
+long_term_memory.json
 
 # Temporary files
 temp/
@@ -38,3 +39,12 @@ Thumbs.db
 
 # Personal Modelfile
 Modelfile
+
+# Test artifacts
+.tests/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Generated files
+*.egg-info/
