@@ -9,6 +9,8 @@ import re
 import subprocess
 import threading
 import urllib.parse
+import shlex
+from typing import Dict, Any, Generator, List, Union, Optional
 
 import requests
 from requests.exceptions import RequestException, ConnectionError, Timeout
@@ -51,14 +53,50 @@ _FILTER_PATTERNS = [
     re.compile(r'Add at least \d+ more constraints.+', re.DOTALL | re.IGNORECASE)
 ]
 
-def _filter_response(text):
+def _filter_response(text: str) -> str:
     """Remove any instruction-like content from responses"""
     for pattern in _FILTER_PATTERNS:
         text = pattern.sub('', text)
     return text.strip()
 
+def _is_command_safe(command_list: List[str]) -> bool:
+    """
+    Validate that a command is safe to execute.
+    Returns True if safe, False otherwise.
+    """
+    # Commands that are always allowed
+    SAFE_COMMANDS = {
+        'xdg-open', 'firefox', 'google-chrome', 'chromium', 
+        'code', 'subl', 'gedit', 'nano', 'vim', 'emacs'
+    }
+    
+    # Dangerous patterns to check
+    DANGEROUS_PATTERNS = [
+        'rm -rf', 'format', 'shutdown', ':(){:|:&};',
+        'sudo', 'su', 'chmod 777', 'chown root',
+        'mkfs', 'dd if=', 'wget .* -O /', 'curl .* | sh',
+        'cat /etc/passwd', 'cat /etc/shadow'
+    ]
+    
+    if not command_list:
+        return False
+    
+    command_name = command_list[0]
+    
+    # If it's a known safe command, allow it
+    if command_name in SAFE_COMMANDS:
+        return True
+    
+    # Check for dangerous patterns in the entire command
+    command_str = ' '.join(command_list).lower()
+    for pattern in DANGEROUS_PATTERNS:
+        if pattern in command_str:
+            return False
+    
+    return True
+
 # --- Non-Blocking Warm-up Function ---
-def warm_up_ollama():
+def warm_up_ollama() -> None:
     """
     Sends a silent, non-blocking request to load the Ollama model into memory.
     This prevents timeouts on the user's first request without freezing the GUI.
@@ -71,8 +109,8 @@ def warm_up_ollama():
                 "prompt": "Hello!", # Lightweight prompt just to trigger loading
                 "stream": False
             }
-            # Longer timeout specifically for warm-up
-            with requests.post(Config.OLLAMA_ENDPOINT, json=payload, timeout=120) as response:
+            # Reasonable timeout for warm-up
+            with requests.post(Config.OLLAMA_ENDPOINT, json=payload, timeout=60) as response:
                 response.raise_for_status()
             logging.info("Ollama model loaded and ready.")
         except (ConnectionError, Timeout) as err:
@@ -85,7 +123,7 @@ def warm_up_ollama():
     threading.Thread(target=task, daemon=True).start()
 
 # --- Smart Router Function ---
-def get_intent(prompt_text: str) -> dict:
+def get_intent(prompt_text: str) -> Dict[str, Any]:
     """
     Uses the LLM to classify the user's intent and generate a structured response.
     Returns a dictionary like {"action": "chat"} or {"action": "execute", "command": "..."}.
@@ -186,7 +224,7 @@ def get_intent(prompt_text: str) -> dict:
             "stream": False,
             "options": {"temperature": 0.0}  # Force deterministic output
         }
-        with requests.post(Config.OLLAMA_ENDPOINT, json=payload, timeout=120) as response:
+        with requests.post(Config.OLLAMA_ENDPOINT, json=payload, timeout=60) as response:
             response.raise_for_status()
 
             full_response_text = response.json().get("response", "").strip()
@@ -234,7 +272,7 @@ def get_intent(prompt_text: str) -> dict:
 
 
 # --- Direct Command Execution Function ---
-def execute_command_directly(intent_data: dict):
+def execute_command_directly(intent_data: Dict[str, Any]) -> Generator[str, None, None]:
     """Executes a command based on the detected intent."""
     logging.info("Executing action based on intent: %s", intent_data)
 
@@ -246,43 +284,51 @@ def execute_command_directly(intent_data: dict):
     if action == "open_url":
         url = intent_data.get("url")
         if url:
-            # Check if it's a local application/file or a web URL
-            command_string = f"xdg-open '{url}'" if url.startswith(("http://", "https://", "file:///")) else url
-
-            if any(cmd in command_string.lower() for cmd in blacklist):
-                yield "⚠️ This action is restricted for security reasons."
-                return
             try:
-                subprocess.Popen(command_string, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                logging.info("Command '%s' launched successfully in the background.", command_string)
+                command_list = []
+                # Use shlex.split for safer command execution
+                if url.startswith(("http://", "https://", "file:///")):
+                    command_list = ["xdg-open", url]
+                else:
+                    # For local applications, execute directly
+                    command_list = [url]
+                
+                # Validate command safety
+                if not _is_command_safe(command_list):
+                    yield "⚠️ This action is restricted for security reasons."
+                    return
+                    
+                subprocess.Popen(command_list, 
+                               stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
+                logging.info("URL/Application '%s' opened successfully.", url)
                 yield "Okay, I opened it."
             except FileNotFoundError:
-                yield f"**Error:** Command '{command_string.split()[0]}' not found. Please ensure it's installed and in your system's PATH."
+                yield f"**Error:** Application '{url.split()[0]}' not found. Please ensure it's installed and in your system's PATH."
             except subprocess.CalledProcessError as err:
-                yield f"**Error executing command:**\n{err}"
+                yield f"**Error executing command:** {err}"
             except Exception as err:
-                yield f"**An unexpected error occurred during URL/application opening:**\n{err}"
+                yield f"**An unexpected error occurred during URL/application opening:** {err}"
         else:
             yield "Error: No URL provided for open_url action."
     
     elif action == "search_google":
         query = intent_data.get("query")
         if query:
-            encoded_query = urllib.parse.quote(query)
-            command_string = f"xdg-open 'https://www.google.com/search?q={encoded_query}'"
-            if any(cmd in command_string.lower() for cmd in blacklist):
-                yield "⚠️ This action is restricted for security reasons."
-                return
             try:
-                subprocess.Popen(command_string, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                logging.info("Command '%s' launched successfully in the background.", command_string)
+                encoded_query = urllib.parse.quote(query)
+                search_url = f"https://www.google.com/search?q={encoded_query}"
+                subprocess.Popen(["xdg-open", search_url], 
+                               stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
+                logging.info("Google search for '%s' launched successfully.", query)
                 yield "Okay, I searched for it."
             except FileNotFoundError:
                 yield "**Error:** Command 'xdg-open' not found. Please ensure it's installed and in your system's PATH."
             except subprocess.CalledProcessError as err:
-                yield f"**Error executing command:**\n{err}"
+                yield f"**Error executing command:** {err}"
             except Exception as err:
-                yield f"**An unexpected error occurred during Google search:**\n{err}"
+                yield f"**An unexpected error occurred during Google search:** {err}"
         else:
             yield "Error: No query provided for search_google action."
 
@@ -298,10 +344,12 @@ def execute_command_directly(intent_data: dict):
                 yield f"Error: {err}"
             except FileNotFoundError as err:
                 yield f"**Error:** {err}"
+            except PermissionError as err:
+                yield f"**Error:** {err}"
             except subprocess.CalledProcessError as err:
-                yield f"**Error executing shortcut command:**\n{err}"
+                yield f"**Error executing shortcut command:** {err}"
             except Exception as err:
-                yield f"**An unexpected error occurred during shortcut execution:**\n{err}"
+                yield f"**An unexpected error occurred during shortcut execution:** {err}"
         else:
             yield "Error: No shortcut key provided for open_shortcut action."
     
@@ -310,25 +358,36 @@ def execute_command_directly(intent_data: dict):
         # This case should ideally be handled by 'open_url' or 'open_shortcut'
         command_string = intent_data.get("command") # Assuming 'command' key for direct CLI
         if command_string:
+            # Check against blacklist
             if any(cmd in command_string.lower() for cmd in blacklist):
                 yield "⚠️ This action is restricted for security reasons."
                 return
             try:
-                subprocess.Popen(command_string, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # Use shlex.split for safer command execution
+                command_list = shlex.split(command_string)
+                
+                # Validate command safety
+                if not _is_command_safe(command_list):
+                    yield "⚠️ This action is restricted for security reasons."
+                    return
+                    
+                subprocess.Popen(command_list, 
+                               stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
                 logging.info("Command '%s' launched successfully in the background.", command_string)
                 yield "Okay, I executed that command."
             except FileNotFoundError:
                 yield f"**Error:** Command '{command_string.split()[0]}' not found. Please ensure it's installed and in your system's PATH."
             except subprocess.CalledProcessError as err:
-                yield f"**Error executing command:**\n{err}"
+                yield f"**Error executing command:** {err}"
             except Exception as err:
-                yield f"**An unexpected error occurred during command execution:**\n{err}"
+                yield f"**An unexpected error occurred during command execution:** {err}"
         else:
             yield "Error: Unknown action or missing command in intent data."
 
 
 # --- Chat Function with Response Filtering ---
-def ask_ollama_chat(prompt_text):
+def ask_ollama_chat(prompt_text: str) -> Generator[str, None, None]:
     """Sends a chat prompt to Ollama and yields the filtered response."""
     logging.info("Thinking (streaming) with model %s...", Config.MODEL_NAME)
     
@@ -347,7 +406,7 @@ def ask_ollama_chat(prompt_text):
         }
         full_raw_response = ""
         
-        with requests.post(Config.OLLAMA_ENDPOINT, json=payload, stream=True, timeout=180) as response:
+        with requests.post(Config.OLLAMA_ENDPOINT, json=payload, stream=True, timeout=120) as response:
             response.raise_for_status()
             for line in response.iter_lines():
                 if line:
@@ -374,7 +433,7 @@ def ask_ollama_chat(prompt_text):
         yield f"Error: Failed to connect to Ollama. {err}"
 
 # --- Entry Point Function ---
-def ask_ollama(prompt_text):
+def ask_ollama(prompt_text: str) -> Generator[str, None, None]:
     """
     Main entry point for asking Ollama.
     Routes the request based on detected intent.

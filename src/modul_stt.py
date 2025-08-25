@@ -7,6 +7,7 @@ import os
 import queue
 import sys
 import threading
+from typing import Callable, Optional, Any, cast
 import webrtcvad
 
 import numpy as np
@@ -20,17 +21,19 @@ class SpeechListener:
     """
     Manages audio input, Voice Activity Detection (VAD), and speech transcription.
     """
-    def __init__(self, on_transcription_result):
+    def __init__(self, on_transcription_result: Callable[[str], None]):
         self.on_transcription_result = on_transcription_result
         self.is_listening = False
-        self.stream = None
-        self.audio_queue = queue.Queue()
-        self.voiced_frames_buffer = []
+        self.stream: Optional[sd.RawInputStream] = None
+        self.audio_queue: queue.Queue = queue.Queue()
+        self.voiced_frames_buffer: list = []
         self.silent_frames_count = 0
         self.is_speaking = False
+        self.whisper_model: Optional[WhisperModel] = None
+        self.vad: Optional[webrtcvad.Vad] = None
         self._initialize_models()
 
-    def _initialize_models(self):
+    def _initialize_models(self) -> None:
         logging.info("[STT] Loading Whisper model '%s'...", Config.STT_MODEL_SIZE)
         local_model_path = str(Config.BASE_DIR / "models/stt/faster-whisper-medium")
         self.whisper_model = WhisperModel(
@@ -42,7 +45,7 @@ class SpeechListener:
         self.vad = webrtcvad.Vad(Config.STT_VAD_AGGRESSIVENESS)
         logging.info("[STT] Model loaded successfully.")
 
-    def _audio_callback(self, indata, frames, callback_time, status):
+    def _audio_callback(self, indata: np.ndarray, frames: int, callback_time: Any, status: Any) -> None:
         """Callback function for the audio stream."""
         if status:
             logging.warning("[STT] Audio callback status: %s", status)
@@ -56,13 +59,13 @@ class SpeechListener:
             mean_squared = np.mean(audio_array_float**2)
             # Add a small epsilon to prevent sqrt of negative/zero if mean_squared is problematic
             rms = np.sqrt(mean_squared + 1e-9) 
-            logging.debug(f"[STT] Audio callback - indata size: {len(indata)}, audio_array size: {audio_array.size}, mean_squared: {mean_squared:.2f}, RMS: {rms:.2f}")
+            logging.debug("[STT] Audio callback - indata size: %d, audio_array size: %d, mean_squared: %.2f, RMS: %.2f", len(indata), audio_array.size, mean_squared, rms)
             if rms > Config.STT_MIN_VOLUME:
                 self.audio_queue.put(bytes(indata))
         else:
             logging.debug("[STT] Audio callback received empty audio_array.")
 
-    def start_listening(self):
+    def start_listening(self) -> None:
         """Starts the audio stream and VAD processing."""
         if self.is_listening: return
         logging.info("[STT] Starting to listen (Hybrid Mode: VAD + PTT)...")
@@ -82,7 +85,7 @@ class SpeechListener:
         self.stream.start()
         threading.Thread(target=self._process_vad, daemon=True).start()
 
-    def stop_listening(self):
+    def stop_listening(self) -> None:
         """Stops the audio stream and processes any remaining audio."""
         if not self.is_listening: return
         logging.info("[STT] PTT: Stopping recording manually.")
@@ -95,10 +98,15 @@ class SpeechListener:
             logging.info("[STT] PTT: Processing audio from buffer...")
             self._process_and_transcribe_buffer()
 
-    def _process_vad(self):
+    def _process_vad(self) -> None:
         silence_threshold = int(Config.STT_SILENCE_THRESHOLD_MS / Config.STT_FRAME_DURATION_MS)
         min_voiced_frames = int(Config.STT_MIN_VOICED_MS / Config.STT_FRAME_DURATION_MS)
         max_voiced_frames = int(Config.STT_MAX_VOICED_MS / Config.STT_FRAME_DURATION_MS)
+
+        # Ensure VAD is initialized before use
+        if self.vad is None:
+            logging.error("[STT] VAD not initialized")
+            return
 
         while self.is_listening:
             try:
@@ -117,11 +125,12 @@ class SpeechListener:
                 mean_squared = np.mean(audio_array_float**2)
                 # Add a small epsilon to prevent sqrt of negative/zero if mean_squared is problematic
                 rms = np.sqrt(mean_squared + 1e-9)
-                logging.debug(f"[VAD] VAD process - frame size: {len(frame)}, audio_array size: {audio_array.size}, mean_squared: {mean_squared:.2f}, RMS: {rms:.2f}")
+                logging.debug("[VAD] VAD process - frame size: %d, audio_array size: %d, mean_squared: %.2f, RMS: %.2f", len(frame), audio_array.size, mean_squared, rms)
                 if rms < Config.STT_MIN_VOLUME:
                     continue
                 
-                is_speech = self.vad.is_speech(frame, Config.STT_SAMPLE_RATE)
+                # Use cast to tell Pylance that self.vad is not None here
+                is_speech = cast(webrtcvad.Vad, self.vad).is_speech(frame, Config.STT_SAMPLE_RATE)
                 
                 if is_speech:
                     if not self.is_speaking:
@@ -153,7 +162,7 @@ class SpeechListener:
             except queue.Empty:
                 continue
 
-    def _process_and_transcribe_buffer(self):
+    def _process_and_transcribe_buffer(self) -> None:
         recording_bytes = b"".join(self.voiced_frames_buffer)
         # Ensure we don't process an empty buffer or too short audio
         if not recording_bytes or len(recording_bytes) < 2000:  # ~125ms of audio
@@ -163,8 +172,13 @@ class SpeechListener:
         self._transcribe_audio(str(Config.TEMP_AUDIO_FILE))
         self.voiced_frames_buffer.clear()
 
-    def _transcribe_audio(self, filepath):
+    def _transcribe_audio(self, filepath: str) -> None:
         """Transcribes the audio file using Whisper model."""
+        # Ensure whisper_model is initialized before use
+        if self.whisper_model is None:
+            logging.error("[STT] Whisper model not initialized")
+            return
+            
         try:
             logging.info("[STT] Transcribing audio...")
             # Enhanced initial prompt for Indonesian language
@@ -176,7 +190,8 @@ class SpeechListener:
             tolong, bantu, help, assist, open, run, execute, code, programming.
             """
 
-            segments, _ = self.whisper_model.transcribe(
+            # Use cast to tell Pylance that self.whisper_model is not None here
+            segments, _ = cast(WhisperModel, self.whisper_model).transcribe(
                 filepath,
                 beam_size=10, # Increased beam size for potentially better accuracy
                 language="id",

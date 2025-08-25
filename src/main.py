@@ -9,41 +9,38 @@ from pathlib import Path
 import customtkinter as ctk
 
 from .config import Config
+from .logging_config import setup_logging
+from .config_validator import run_validations
 from .gui import AssistantApp
 
-def setup_logging():
+def setup_logging_wrapper():
     """Configures logging to file and console."""
     Config.setup_directories() # Ensure logs directory exists
-    
-    logging.basicConfig(
-        level=logging.DEBUG, # Change to DEBUG to capture all detailed logs
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(Config.LOG_FILE),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-    logging.getLogger('httpx').setLevel(logging.WARNING) # Suppress noisy httpx logs
-    logging.getLogger('urllib3').setLevel(logging.WARNING) # Suppress noisy urllib3 logs
+    setup_logging(Config.LOG_FILE, logging.DEBUG) # Setup logging with DEBUG level
 
 def main():
     """
     The sole entry point for the Luna Voice Assistant application.
     Initializes configuration, sets up the environment, and launches the GUI.
     """
-    setup_logging() # Setup logging first
+    setup_logging_wrapper() # Setup logging first
 
     try:
         logging.info("🚀 Starting Luna Assistant...")
 
         # 1. Setup environment
         logging.info("⚙️ Setting up environment...")
+        
+        # 2. Validate configuration
+        logging.info("🔍 Validating configuration...")
+        if not run_validations():
+            logging.warning("⚠️  Configuration validation issues found. Continuing anyway.")
 
-        # 2. Configure GUI appearance
+        # 3. Configure GUI appearance
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
 
-        # 3. Launch the application window
+        # 4. Launch the application window
         logging.info("🖼️ Launching GUI...")
         app = AssistantApp()
         app.mainloop()

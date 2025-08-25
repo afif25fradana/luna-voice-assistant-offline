@@ -40,6 +40,7 @@ class Config:
 
     # --- Memory Configuration ---
     MEMORY_FILE = BASE_DIR / "memory.json"
+    LONG_TERM_MEMORY_FILE = BASE_DIR / "long_term_memory.json"
     MAX_MEMORY_SIZE = 10 # Number of past messages to remember
 
     # --- GUI Configuration ---

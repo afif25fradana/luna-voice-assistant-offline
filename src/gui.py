@@ -6,6 +6,8 @@ for speech-to-text, text-to-speech, AI processing, and memory management.
 import re
 import time
 import logging
+import signal
+import sys
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw
@@ -58,6 +60,7 @@ class AssistantApp(ctk.CTk):
         self.message_count = 0
         self.is_processing = False
         self.last_input_time = 0
+        self.is_shutting_down = False
 
         self._create_widgets()
 
@@ -65,6 +68,10 @@ class AssistantApp(ctk.CTk):
         self.after(100, self._add_welcome_message)
         warm_up_ollama()
 
+        # Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
     def _create_widgets(self):
@@ -287,9 +294,20 @@ class AssistantApp(ctk.CTk):
         except Exception as err: # pylint: disable=broad-exception-caught
             logging.warning("Could not load avatar image: %s", err)
 
+    def _signal_handler(self, signum, frame):
+        """Handles system signals for graceful shutdown."""
+        logging.info("[GUI] Received signal %d. Initiating graceful shutdown...", signum)
+        self._on_closing()
+
     def _on_closing(self):
         """Handles actions to perform when the application window is closed."""
+        if self.is_shutting_down:
+            logging.info("[GUI] Shutdown already in progress. Ignoring additional close request.")
+            return
+            
+        self.is_shutting_down = True
         logging.info("[GUI] Shutting down...")
+        
         try:
             logging.info("[GUI] Stopping TTS speaking...")
             stop_speaking()
@@ -308,3 +326,4 @@ class AssistantApp(ctk.CTk):
         logging.info("[GUI] Destroying GUI window...")
         self.destroy()
         logging.info("[GUI] GUI window destroyed.")
+        sys.exit(0)

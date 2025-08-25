@@ -1,57 +1,96 @@
 """
-This module manages the chat memory for the Luna Voice Assistant.
-It stores chat history in a JSON file and provides methods to add, retrieve, and clear messages.
+This module handles the short-term and long-term memory for the assistant.
 """
 import json
-import os
 import logging
 from datetime import datetime
+from typing import List, Dict, Any
+
+# Use absolute imports for better testability
+try:
+    from .config import Config
+except ImportError:
+    # Fallback for when running tests
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from config import Config
 
 class ChatMemory:
     """
-    Manages the storage and retrieval of chat messages.
+    Manages chat history in memory with a maximum size limit.
     """
-    def __init__(self, memory_file="memory.json", max_memory_size=10):
+    def __init__(self, memory_file: str, max_memory_size: int):
         self.memory_file = memory_file
         self.max_memory_size = max_memory_size
-        self.memory = self._load_memory()
+        self.history: List[Dict[str, str]] = []
+        self._load_memory()
 
-    def _load_memory(self):
-        """Loads chat history from the memory file."""
-        if os.path.exists(self.memory_file):
-            try:
-                with open(self.memory_file, 'r', encoding='utf-8') as file:
-                    return json.load(file)
-            except json.JSONDecodeError:
-                logging.warning("Could not decode JSON from %s. Starting with empty memory.", self.memory_file)
-                return []
-            except IOError as err:
-                logging.error("Error loading memory file %s: %s", self.memory_file, err)
-                return []
-        return []
-
-    def _save_memory(self):
-        """Saves the current chat history to the memory file."""
+    def _load_memory(self) -> None:
+        """Load chat history from file."""
         try:
-            with open(self.memory_file, 'w', encoding='utf-8') as file:
-                json.dump(self.memory, file, indent=4)
-        except IOError as err:
-            logging.error("Error saving memory file %s: %s", self.memory_file, err)
+            with open(self.memory_file, "r", encoding="utf-8") as file:
+                self.history = json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.history = []
 
-    def add_message(self, role, content):
-        """Adds a new message to the chat history."""
-        timestamp = datetime.now().isoformat()
-        self.memory.append({"role": role, "content": content, "timestamp": timestamp})
-        # Keep only the most recent messages up to max_memory_size
-        if len(self.memory) > self.max_memory_size:
-            self.memory = self.memory[-self.max_memory_size:]
+    def _save_memory(self) -> None:
+        """Save chat history to file."""
+        try:
+            with open(self.memory_file, "w", encoding="utf-8") as file:
+                json.dump(self.history, file, indent=4, ensure_ascii=False)
+        except IOError as e:
+            logging.error("[Memory] Error saving chat memory: %s", e)
+
+    def add_message(self, role: str, content: str) -> None:
+        """Add a message to chat history."""
+        self.history.append({"role": role, "content": content, "timestamp": datetime.now().isoformat()})
+        # Keep only the most recent messages
+        if len(self.history) > self.max_memory_size:
+            self.history = self.history[-self.max_memory_size:]
         self._save_memory()
 
-    def get_history(self):
-        """Retrieves the current chat history."""
-        return self.memory
+    def get_history(self) -> List[Dict[str, str]]:
+        """Get chat history."""
+        return self.history.copy()
 
-    def clear_memory(self):
-        """Clears all messages from the chat history."""
-        self.memory = []
+    def clear_memory(self) -> None:
+        """Clear all chat history."""
+        self.history.clear()
         self._save_memory()
+
+def save_conversation_turn(user_message: str, assistant_message: str) -> None:
+    """
+    Saves a user-assistant conversation turn to the long-term memory file in JSON format.
+    """
+    turn: Dict[str, Any] = {
+        "timestamp": datetime.now().isoformat(),
+        "user": user_message,
+        "assistant": assistant_message
+    }
+
+    try:
+        # Read existing history
+        try:
+            with open(Config.LONG_TERM_MEMORY_FILE, "r", encoding="utf-8") as file:
+                history: List[Dict[str, Any]] = json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            history = []
+
+        # Append new turn and write back
+        history.append(turn)
+        with open(Config.LONG_TERM_MEMORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(history, file, indent=4)
+
+    except IOError as e:
+        logging.error("[Memory] Error saving to long-term memory: %s", e)
+
+def load_long_term_memory() -> List[Dict[str, Any]]:
+    """
+    Loads the conversation history from the long-term memory file.
+    """
+    try:
+        with open(Config.LONG_TERM_MEMORY_FILE, "r", encoding="utf-8") as file:
+            return json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
