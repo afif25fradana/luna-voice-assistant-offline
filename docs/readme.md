@@ -1,5 +1,9 @@
 # Hey there! Meet Luna Voice Assistant v5.1! 👋
 
+> **🚨 This Project is Discontinued 🚨**
+>
+> This project was created for learning basic functions. The new, improved project with a better foundation is available at: **[Lyra Voice Assistant](https://github.com/afif25fradana/lyra-voice-assistant.git)**
+
 I'm so excited to introduce you to Luna, my secure, offline-capable AI voice assistant! I've poured a lot of effort into building her with a super robust, modular architecture, making sure she's got enhanced security features, and a really responsive, user-friendly interface.
 
 ## ✨ What makes Luna awesome? (My favorite features!)
@@ -57,8 +61,8 @@ Want to try Luna out yourself? Here's how you can get her up and running!
 
 1.  **Grab the Code (Clone the Repository)**
     ```bash
-    git clone https://github.com/your-username/offline-voice-assistant-upgrade2.git
-    cd offline-voice-assistant-upgrade2
+    git clone https://github.com/afif25fradana/luna-voice-assistant-offline.git
+    cd luna-voice-assistant-offline
     ```
 
 2.  **Create a Cozy Space (Virtual Environment)**
