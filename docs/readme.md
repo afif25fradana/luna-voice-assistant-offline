@@ -1,5 +1,5 @@
 # Hey there! Meet Luna Voice Assistant v5.1! 👋
-
+> [!WARNING]
 > **🚨 This Project is Discontinued 🚨**
 >
 > This project was created for learning basic functions. The new, improved project with a better foundation is available at: **[Lyra Voice Assistant](https://github.com/afif25fradana/lyra-voice-assistant.git)**
